@@ -129,15 +129,25 @@ public:
 
 // ── C-linkage factory functions for dynamic loading ──
 // These are resolved by AlgorithmHotLoadDecorator via dlsym/GetProcAddress.
-
-extern "C" CAMatrix::Identity::Core::IdentitySigningAlgorithm* create_identity_algorithm() noexcept
+//
+// Both create_identity_algorithm() and destroy_identity_algorithm() are
+// declared inside namespace CAMatrix::Identity::Core in CoreLib's
+// identity_signing_algorithm.h, where destroy_identity_algorithm() is also
+// declared as a friend of IdentitySigningAlgorithm (so it can access the
+// protected destructor). Defining them in the same namespace here makes the
+// friend declaration apply — GCC enforces this, while MSVC and Clang are
+// more permissive. The `extern "C"` linkage keeps the exported symbol names
+// compatible with dlsym/GetProcAddress.
+namespace CAMatrix::Identity::Core {
+extern "C" IdentitySigningAlgorithm* create_identity_algorithm() noexcept
 {
     return new CAMatrix::Identity::Strategies::NewIdentityAlgorithm();
 }
 
-extern "C" void destroy_identity_algorithm(CAMatrix::Identity::Core::IdentitySigningAlgorithm* p) noexcept
+extern "C" void destroy_identity_algorithm(IdentitySigningAlgorithm* p) noexcept
 {
     delete p;
 }
+} // namespace CAMatrix::Identity::Core
 
 #endif // NEW_IDENTITY_ALGORITHM_H
