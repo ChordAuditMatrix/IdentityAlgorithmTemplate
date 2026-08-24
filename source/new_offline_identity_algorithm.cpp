@@ -1,0 +1,148 @@
+/*
+ * Copyright (C) 2021-2026, Dylan Liu
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file new_offline_identity_algorithm.cpp
+ * @brief Skeleton implementation of an offline identity signing algorithm.
+ * @details All methods return default-constructed results as stubs.
+ *          Users should replace these with actual cryptographic logic.
+ * @author Dylan Liu
+ * @version 1.0.0
+ * @date 2026-08-25
+ * @copyright Copyright (C) 2021 - 2026, Dylan Liu
+ */
+
+#include "NewIdentityAlgorithm/new_offline_identity_algorithm.h"
+
+#include <spdlog/spdlog.h>
+
+namespace CAMatrix::Identity::Strategies {
+
+// ── Constructor / Destructor ──
+
+NewOfflineIdentityAlgorithm::NewOfflineIdentityAlgorithm()
+{
+    spdlog::info("NewOfflineIdentityAlgorithm constructed (stub)");
+}
+
+NewOfflineIdentityAlgorithm::~NewOfflineIdentityAlgorithm() = default;
+
+// ── Key generation ──
+
+std::pair<std::shared_ptr<AlgoPublicParams>,
+          std::shared_ptr<AlgoPrivateParams>>
+NewOfflineIdentityAlgorithm::generateMasterKey()
+{
+    // TODO: Implement master key generation (mpk, msk)
+    spdlog::warn("NewOfflineIdentityAlgorithm::generateMasterKey() stub — not implemented");
+    return {nullptr, nullptr};
+}
+
+std::pair<std::shared_ptr<AlgoUserPublicParams>,
+          std::shared_ptr<AlgoUserPrivateParams>>
+NewOfflineIdentityAlgorithm::deriveUserKey(
+    const AlgoPublicParams& /*masterPub*/,
+    const AlgoPrivateParams& /*masterPriv*/,
+    const std::string& /*userId*/)
+{
+    // TODO: Implement user key derivation from master key + user ID
+    spdlog::warn("NewOfflineIdentityAlgorithm::deriveUserKey() stub — not implemented");
+    return {nullptr, nullptr};
+}
+
+// ── Request creation ──
+
+IdentityRequestVariantPtr NewOfflineIdentityAlgorithm::createRequest(
+    IdentityOperation op,
+    const AuditDataMap& /*input*/)
+{
+    // TODO: Implement AuditDataMap → typed SignRequest or AggregateVerifyRequest
+    spdlog::warn("NewOfflineIdentityAlgorithm::createRequest() stub — not implemented for op={}",
+                 static_cast<int>(op));
+    throw std::runtime_error("NewOfflineIdentityAlgorithm::createRequest() not implemented");
+}
+
+// ── Core operations ──
+
+CryptoArray NewOfflineIdentityAlgorithm::sign(const SignRequest& /*req*/)
+{
+    // TODO: Implement signing (message + userPrivateKey + masterPublicKey → signature)
+    spdlog::warn("NewOfflineIdentityAlgorithm::sign() stub — not implemented");
+    return CryptoArray{};
+}
+
+bool NewOfflineIdentityAlgorithm::aggregateVerify(const AggregateVerifyRequest& /*req*/)
+{
+    // TODO: Implement aggregate verification (aggregateSignature + messages + signerPubKeys → bool)
+    spdlog::warn("NewOfflineIdentityAlgorithm::aggregateVerify() stub — not implemented");
+    return false;
+}
+
+// ── Factory methods for deserialization ──
+
+std::shared_ptr<AlgoPublicParams> NewOfflineIdentityAlgorithm::createPublicParams() const
+{
+    // TODO: Return a concrete AlgoPublicParams subclass
+    spdlog::warn("NewOfflineIdentityAlgorithm::createPublicParams() stub — not implemented");
+    return nullptr;
+}
+
+std::shared_ptr<AlgoPrivateParams> NewOfflineIdentityAlgorithm::createPrivateParams() const
+{
+    // TODO: Return a concrete AlgoPrivateParams subclass
+    spdlog::warn("NewOfflineIdentityAlgorithm::createPrivateParams() stub — not implemented");
+    return nullptr;
+}
+
+std::shared_ptr<AlgoUserPublicParams> NewOfflineIdentityAlgorithm::createUserPublicParams() const
+{
+    // TODO: Return a concrete AlgoUserPublicParams subclass
+    spdlog::warn("NewOfflineIdentityAlgorithm::createUserPublicParams() stub — not implemented");
+    return nullptr;
+}
+
+std::shared_ptr<AlgoUserPrivateParams> NewOfflineIdentityAlgorithm::createUserPrivateParams() const
+{
+    // TODO: Return a concrete AlgoUserPrivateParams subclass
+    spdlog::warn("NewOfflineIdentityAlgorithm::createUserPrivateParams() stub — not implemented");
+    return nullptr;
+}
+
+} // namespace CAMatrix::Identity::Strategies
+
+// ── C-linkage factory functions for dynamic loading ──
+// These are resolved by AlgorithmHotLoadDecorator via dlsym/GetProcAddress.
+//
+// Both create_identity_algorithm() and destroy_identity_algorithm() are
+// declared inside namespace CAMatrix::Identity::Core in CoreLib's
+// identity_signing_algorithm.h, where destroy_identity_algorithm() is also
+// declared as a friend of IdentitySigningAlgorithm (so it can access the
+// protected destructor). Defining them in the same namespace here makes the
+// friend declaration apply — GCC enforces this, while MSVC and Clang are
+// more permissive. The `extern "C"` linkage keeps the exported symbol names
+// compatible with dlsym/GetProcAddress.
+namespace CAMatrix::Identity::Core {
+extern "C" IdentitySigningAlgorithm* create_identity_algorithm() noexcept
+{
+    return new CAMatrix::Identity::Strategies::NewOfflineIdentityAlgorithm();
+}
+
+extern "C" void destroy_identity_algorithm(IdentitySigningAlgorithm* p) noexcept
+{
+    delete p;
+}
+} // namespace CAMatrix::Identity::Core

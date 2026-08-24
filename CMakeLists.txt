@@ -42,16 +42,32 @@ if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
 
-# ==================== Identity Algorithm Shared Library ====================
-set(SOURCE
-  source/new_identity_algorithm.cpp
+# ==================== Identity Algorithm Shared Libraries ====================
+# Two skeleton plugins, one per coordination tier:
+# - NewOfflineIdentityAlgorithm → libNewOfflineIdentityAlgorithm (kind = Offline)
+# - NewOnlineIdentityAlgorithm  → libNewOnlineIdentityAlgorithm  (kind = Online)
+# Each plugin exports the same C-linkage factory symbols
+# (create_identity_algorithm / destroy_identity_algorithm); the hot-load
+# system isolates them per library.
+
+add_library(NewOfflineIdentityAlgorithm SHARED
+  source/new_offline_identity_algorithm.cpp
+)
+target_link_libraries(NewOfflineIdentityAlgorithm PRIVATE ChordAuditMatrixLib)
+target_include_directories(NewOfflineIdentityAlgorithm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+set_target_properties(NewOfflineIdentityAlgorithm PROPERTIES
+    VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-add_library(${PROJECT_NAME} SHARED ${SOURCE})
-target_link_libraries(${PROJECT_NAME} PRIVATE ChordAuditMatrixLib)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(NewOnlineIdentityAlgorithm SHARED
+  source/new_online_identity_algorithm.cpp
+)
+target_link_libraries(NewOnlineIdentityAlgorithm PRIVATE ChordAuditMatrixLib)
+target_include_directories(NewOnlineIdentityAlgorithm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
+set_target_properties(NewOnlineIdentityAlgorithm PROPERTIES
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     SOVERSION ${PROJECT_VERSION_MAJOR}
 )

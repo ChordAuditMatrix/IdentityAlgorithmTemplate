@@ -16,14 +16,20 @@
  */
 
 /**
- * @file new_identity_algorithm.h
- * @brief Template for implementing a custom identity signing algorithm as a shared library plugin.
- * @details This file provides a skeleton implementation of an identity signing algorithm
+ * @file new_offline_identity_algorithm.h
+ * @brief Template for implementing an offline identity signing algorithm as a shared library plugin.
+ * @details This file provides a skeleton implementation of an offline identity signing algorithm
  *          that can be loaded at runtime by the ChordAuditMatrix hot-load system.
  *
- *          The template inherits from `IdentitySigningAlgorithm` and implements all
+ *          The template inherits from `OfflineIdentitySigningAlgorithm` and implements all
  *          required virtual methods with empty stubs. Users should fill in the actual
  *          cryptographic logic for their custom identity algorithm.
+ *
+ *          Offline identity algorithms sign without any coordination: signers never
+ *          exchange state before signing and aggregation requires no session. The
+ *          coordination mode `kind()` is finalized by the tier to
+ *          `IdentityAlgorithmKind::Offline` and is inherited as-is — it must NOT be
+ *          reimplemented in this class.
  *
  *          Identity signing algorithms support two core operations:
  *          - **Sign**: Sign a message with a user's private key
@@ -34,19 +40,21 @@
  *          2. **User key pair** — derived from master key + user ID via `deriveUserKey()`
  *
  *          The C-linkage factory functions `create_identity_algorithm()` and
- *          `destroy_identity_algorithm()` are automatically exported for dynamic
- *          loading via `dlopen`/`dlsym`.
+ *          `destroy_identity_algorithm()` are declared in CoreLib's
+ *          `identity_signing_algorithm.h` and defined in the matching .cpp file,
+ *          so they are automatically exported for dynamic loading via
+ *          `dlopen`/`dlsym`.
  *
  * @author Dylan Liu
  * @version 1.0.0
- * @date 2026-07-12
+ * @date 2026-08-25
  * @copyright Copyright (C) 2021 - 2026, Dylan Liu
  */
 
-#ifndef NEW_IDENTITY_ALGORITHM_H
-#define NEW_IDENTITY_ALGORITHM_H
+#ifndef NEW_OFFLINE_IDENTITY_ALGORITHM_H
+#define NEW_OFFLINE_IDENTITY_ALGORITHM_H
 
-#include "ChordAuditMatrixLib/interfaces/identity/identity_signing_algorithm.h"
+#include "ChordAuditMatrixLib/interfaces/identity/offline_identity_signing_algorithm.h"
 #include "ChordAuditMatrixLib/interfaces/identity/identity_algorithm_params.h"
 #include "ChordAuditMatrixLib/interfaces/identity/identity_request.h"
 #include "ChordAuditMatrixLib/interfaces/audit/messages/audit_data_map.h"
@@ -61,9 +69,9 @@ using CryptoArray = CAMatrix::Crypto::CryptoArray;
 using AuditDataMap = CAMatrix::Audit::Messages::AuditDataMap;
 
 /**
- * @class NewIdentityAlgorithm
- * @brief Skeleton implementation of a custom identity signing algorithm.
- * @details Users should inherit from `IdentitySigningAlgorithm` and implement
+ * @class NewOfflineIdentityAlgorithm
+ * @brief Skeleton implementation of an offline identity signing algorithm.
+ * @details Users should inherit from `OfflineIdentitySigningAlgorithm` and implement
  *          all pure virtual methods:
  *
  *          **Key Management** (two-tier hierarchy):
@@ -82,15 +90,18 @@ using AuditDataMap = CAMatrix::Audit::Messages::AuditDataMap;
  *
  *          **Request Creation**:
  *          - `createRequest()`    — Convert AuditDataMap → typed SignRequest or AggregateVerifyRequest
+ *
+ *          `kind()` is finalized by `OfflineIdentitySigningAlgorithm` and must NOT
+ *          be overridden.
  */
-class NewIdentityAlgorithm : public IdentitySigningAlgorithm {
+class NewOfflineIdentityAlgorithm : public OfflineIdentitySigningAlgorithm {
 public:
-    NewIdentityAlgorithm();
-    ~NewIdentityAlgorithm() override;
+    NewOfflineIdentityAlgorithm();
+    ~NewOfflineIdentityAlgorithm() override;
 
     // ── PluggableAlgorithm interface ──
 
-    std::string algorithmType() const override { return "NewIdentity"; }
+    std::string algorithmType() const override { return "NewOfflineIdentity"; }
     std::string version() const override { return "1.0.0"; }
 
     // ── Key generation ──
@@ -127,27 +138,4 @@ public:
 
 } // namespace CAMatrix::Identity::Strategies
 
-// ── C-linkage factory functions for dynamic loading ──
-// These are resolved by AlgorithmHotLoadDecorator via dlsym/GetProcAddress.
-//
-// Both create_identity_algorithm() and destroy_identity_algorithm() are
-// declared inside namespace CAMatrix::Identity::Core in CoreLib's
-// identity_signing_algorithm.h, where destroy_identity_algorithm() is also
-// declared as a friend of IdentitySigningAlgorithm (so it can access the
-// protected destructor). Defining them in the same namespace here makes the
-// friend declaration apply — GCC enforces this, while MSVC and Clang are
-// more permissive. The `extern "C"` linkage keeps the exported symbol names
-// compatible with dlsym/GetProcAddress.
-namespace CAMatrix::Identity::Core {
-extern "C" IdentitySigningAlgorithm* create_identity_algorithm() noexcept
-{
-    return new CAMatrix::Identity::Strategies::NewIdentityAlgorithm();
-}
-
-extern "C" void destroy_identity_algorithm(IdentitySigningAlgorithm* p) noexcept
-{
-    delete p;
-}
-} // namespace CAMatrix::Identity::Core
-
-#endif // NEW_IDENTITY_ALGORITHM_H
+#endif // NEW_OFFLINE_IDENTITY_ALGORITHM_H
