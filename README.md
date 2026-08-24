@@ -10,7 +10,33 @@ The template depends on [CoreLib](https://github.com/ChordAuditMatrix/CoreLib), 
 
 ## Architecture
 
-Identity signing algorithms implement a **two-tier key hierarchy** with two core operations:
+Identity signing algorithms implement a **two-tier key hierarchy** with two core operations,
+and split into **two coordination tiers** — Online and Offline — mirroring the Audit
+hierarchy's `AuditStrategy → StaticAuditStrategy / DynamicAuditStrategy` pattern:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ IdentitySigningAlgorithm (abstract base, CoreLib)                    │
+│  algorithmType() / version() / kind() / key mgmt / sign / verify     │
+├───────────────────────────────────────┬──────────────────────────────┤
+│ OnlineIdentitySigningAlgorithm        │ OfflineIdentitySigningAlgorithm │
+│  kind() = Online (final)              │  kind() = Offline (final)    │
+│  + makeSessionString()                │  (no session methods —       │
+│  + validateSessionString()            │   by design, enforced at     │
+│  + aggregateSessionSignatures()       │   compile time)              │
+├───────────────────────────────────────┼──────────────────────────────┤
+│ NewOnlineIdentityAlgorithm            │ NewOfflineIdentityAlgorithm  │
+│  algorithmType = "NewOnlineIdentity"  │  algorithmType = "NewOfflineIdentity" │
+│  → libNewOnlineIdentityAlgorithm      │  → libNewOfflineIdentityAlgorithm     │
+└───────────────────────────────────────┴──────────────────────────────┘
+```
+
+`kind()` is finalized by the tier (never reimplemented in a concrete class), so callers can
+statically distinguish session-coordinated from session-free algorithms. The session methods
+exist **only** on the Online tier — an `OfflineIdentitySigningAlgorithm` reference cannot
+invoke them, which keeps the "no coordination" constraint visible at compile time.
+
+Both tiers share the same key management and operation flow:
 
 ```
 ┌────────────────────────────────────────────────────┐
@@ -47,6 +73,48 @@ flowchart TB
     MPK --> AV
 ```
 
+### Two Output Libraries
+
+The template builds **two** shared libraries — one skeleton plugin per coordination tier:
+
+| Library | Class | `algorithmType()` | `kind()` |
+|---|---|---|---|
+| `libNewOfflineIdentityAlgorithm` | `NewOfflineIdentityAlgorithm` | `"NewOfflineIdentity"` | `Offline` |
+| `libNewOnlineIdentityAlgorithm` | `NewOnlineIdentityAlgorithm` | `"NewOnlineIdentity"` | `Online` |
+
+Both libraries export the **same** C-linkage factory symbols `create_identity_algorithm()`
+and `destroy_identity_algorithm()`. The hot-load system resolves them per `dlopen` handle,
+so the identical symbol names are isolated per library and never collide — the same pattern
+as the SM9Noncert / SM9Online plugin pair.
+
+### Online vs Offline
+
+Choose the tier by whether your scheme needs a coordinator-issued session string:
+
+| Criterion | Online | Offline |
+|---|---|---|
+| Coordinator publishes a shared session string before signing | Yes | No |
+| Signature is bound to the session string | Yes | No |
+| Aggregation requires a same-session check | Yes | No |
+| Typical scheme | SM9Online (online aggregate signing) | SM9Noncert (certificateless aggregate signing) |
+
+### Key-Domain Isolation (mandatory for all mechanisms)
+
+Two hard rules apply to **every** identity mechanism, Online and Offline alike, when mapping
+identities into the cryptographic groups:
+
+1. **ID → G1 hashing MUST use hash-to-curve.** Use RFC 9380 SVDW hash-to-curve
+   (CoreLib `sm9_hash_to_curve` / `sm9_noncert::hashToG1`). The "hash-to-scalar then
+   multiply by generator" construction (`[H1(ID‖hid)]P1`) is **forbidden** — it exposes the
+   discrete log of the derived point and lets an adversary craft algebraic relations between
+   points, breaking the random-oracle property of identity binding.
+
+2. **ID → G1 hashing MUST carry a mechanism domain prefix.** The hash input must contain a
+   mechanism-unique domain label (plus `hid` if the mechanism defines one):
+   `Q = hashToG1(domain ‖ hid ‖ ID)`. Without domain separation, mechanisms sharing one KGC
+   master key map the same ID to the same `Q` and derive the same partial private key
+   `D = ks · Q` — a key-domain mix-up where one mechanism's keys hold in another.
+
 ## Quick Start
 
 ### 1. Clone with Submodules
@@ -70,14 +138,15 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug -G Ninja
 cmake --build . -j$(nproc)
 ```
 
-This produces `libIdentityAlgorithmTemplate.so` (or `.dylib` on macOS).
+This produces two plugin libraries: `libNewOfflineIdentityAlgorithm.so` and
+`libNewOnlineIdentityAlgorithm.so` (or `.dylib` on macOS).
 
 ### 3. Install into ChordAuditMatrix
 
-Copy the shared library to the identity algorithm plugin directory configured in your ChordAuditMatrix deployment:
+Copy the shared libraries to the identity algorithm plugin directory configured in your ChordAuditMatrix deployment:
 
 ```bash
-cp libIdentityAlgorithmTemplate.so /path/to/chordauditmatrix/plugins/
+cp libNewOfflineIdentityAlgorithm.so libNewOnlineIdentityAlgorithm.so /path/to/chordauditmatrix/plugins/
 ```
 
 The `AlgorithmHotLoadDecorator` will discover it via the C-linkage factory functions.
@@ -86,7 +155,16 @@ The `AlgorithmHotLoadDecorator` will discover it via the C-linkage factory funct
 
 ### Base Class
 
-Inherit from `CAMatrix::Identity::Core::IdentitySigningAlgorithm`.
+Pick the tier that matches your scheme's coordination model, then inherit from it:
+
+| Your scheme | Inherit from | `kind()` |
+|---|---|---|
+| Signs without any coordination; aggregation is session-free | `CAMatrix::Identity::Core::OfflineIdentitySigningAlgorithm` | `Offline` (final) |
+| Requires a coordinator-published session string; signatures bound to it | `CAMatrix::Identity::Core::OnlineIdentitySigningAlgorithm` | `Online` (final) |
+
+`kind()` is finalized by the tier — do **not** override it. The Online tier additionally
+requires the three session-contract methods (`makeSessionString` / `validateSessionString` /
+`aggregateSessionSignatures`).
 
 ### Required Methods
 
@@ -94,6 +172,7 @@ Inherit from `CAMatrix::Identity::Core::IdentitySigningAlgorithm`.
 |--------|-------------|---------|
 | `algorithmType()` | Unique algorithm identifier (e.g., `"MyIdentity"`) | `std::string` |
 | `version()` | Semantic version string | `std::string` |
+| `kind()` | Coordination mode — **inherited final** from the tier, never overridden | `IdentityAlgorithmKind` |
 | `generateMasterKey()` | Generate master key pair (mpk, msk) | `pair<AlgoPublicParamsPtr, AlgoPrivateParamsPtr>` |
 | `deriveUserKey(mpk, msk, userId)` | Derive user key pair from master key | `pair<AlgoUserPublicParamsPtr, AlgoUserPrivateParamsPtr>` |
 | `sign(req)` | Sign a message with user's private key | `CryptoArray` |
@@ -103,6 +182,14 @@ Inherit from `CAMatrix::Identity::Core::IdentitySigningAlgorithm`.
 | `createPrivateParams()` | Factory for deserializing master private params | `shared_ptr<AlgoPrivateParams>` |
 | `createUserPublicParams()` | Factory for deserializing user public params | `shared_ptr<AlgoUserPublicParams>` |
 | `createUserPrivateParams()` | Factory for deserializing user private params | `shared_ptr<AlgoUserPrivateParams>` |
+
+**Online tier only** — session contract:
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `makeSessionString(sessionId, context)` | Construct the coordinator-issued session string (`sessionId ‖ context`); MUST be unique across sessions | `std::string` |
+| `validateSessionString(sessionString)` | Validate a session string's format and domain | `bool` |
+| `aggregateSessionSignatures(signatures, sessionString)` | Aggregate in-session signatures; MUST reject cross-session mixing and duplicate signers | `CryptoArray` |
 
 ### C-Linkage Factory Functions
 
@@ -180,9 +267,11 @@ IdentityAlgorithmTemplate/
 │   └── CoreLib/          ← git submodule
 ├── include/
 │   └── NewIdentityAlgorithm/
-│       └── new_identity_algorithm.h
+│       ├── new_offline_identity_algorithm.h
+│       └── new_online_identity_algorithm.h
 └── source/
-    └── new_identity_algorithm.cpp
+    ├── new_offline_identity_algorithm.cpp
+    └── new_online_identity_algorithm.cpp
 ```
 
 ## License
