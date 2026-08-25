@@ -126,6 +126,7 @@ public:
     // ── Core operations ──
 
     CryptoArray sign(const SignRequest& req) override;
+    CryptoArray aggregate(const AggregateRequest& req) override;
     bool aggregateVerify(const AggregateVerifyRequest& req) override;
 
     // ── Factory methods for deserialization ──

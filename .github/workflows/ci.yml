@@ -155,52 +155,56 @@ jobs:
             -DCAM_BUILD_BENCHMARK=OFF `
             -DCAM_GENERATE_DOCS=OFF
 
-      - name: Build shared library
+      - name: Build shared libraries
         shell: bash
         run: |
-          cmake --build build --parallel --target IdentityAlgorithmTemplate
+          cmake --build build --parallel --target NewOfflineIdentityAlgorithm NewOnlineIdentityAlgorithm
 
       # ----------------------------------------------------------------------
       # Package the shared library (only on tag pushes)
       # ----------------------------------------------------------------------
-      - name: Package shared library (Linux)
+      - name: Package shared libraries (Linux)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Linux'
         shell: bash
         run: |
           set -e
           STAGING="IdentityAlgorithmTemplate-${GITHUB_REF_NAME}-linux-x64"
           mkdir -p "${STAGING}/lib"
-          # Collect the built shared library (and symlinks).
-          find build -maxdepth 2 -type f -name 'libIdentityAlgorithmTemplate.so*' \
+          # Collect both built shared libraries (and symlinks).
+          find build -maxdepth 2 -type f \( -name 'libNewOfflineIdentityAlgorithm.so*' -o -name 'libNewOnlineIdentityAlgorithm.so*' \) \
             -exec cp -P {} "${STAGING}/lib/" \;
           cp README.md LICENSE "${STAGING}/" 2>/dev/null || true
           zip -r "${STAGING}.zip" "${STAGING}"
           echo "PACKAGE_PATH=${STAGING}.zip" >> "$GITHUB_ENV"
 
-      - name: Package shared library (macOS)
+      - name: Package shared libraries (macOS)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'macOS'
         shell: bash
         run: |
           set -e
           STAGING="IdentityAlgorithmTemplate-${GITHUB_REF_NAME}-macos-x64"
           mkdir -p "${STAGING}/lib"
-          find build -maxdepth 2 -type f -name 'libIdentityAlgorithmTemplate*.dylib' \
+          find build -maxdepth 2 -type f \( -name 'libNewOfflineIdentityAlgorithm*.dylib' -o -name 'libNewOnlineIdentityAlgorithm*.dylib' \) \
             -exec cp -P {} "${STAGING}/lib/" \;
           cp README.md LICENSE "${STAGING}/" 2>/dev/null || true
           zip -r "${STAGING}.zip" "${STAGING}"
           echo "PACKAGE_PATH=${STAGING}.zip" >> "$GITHUB_ENV"
 
-      - name: Package shared library (Windows)
+      - name: Package shared libraries (Windows)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $staging = "IdentityAlgorithmTemplate-${env:GITHUB_REF_NAME}-windows-x64"
           New-Item -ItemType Directory -Force -Path "$staging\bin","$staging\lib" | Out-Null
-          # DLL (runtime) and import library.
-          Get-ChildItem -Path build -Recurse -Filter 'IdentityAlgorithmTemplate.dll' |
+          # DLLs (runtime) and import libraries for both plugins.
+          Get-ChildItem -Path build -Recurse -Filter 'NewOfflineIdentityAlgorithm.dll' |
             Copy-Item -Destination "$staging\bin\" -ErrorAction SilentlyContinue
-          Get-ChildItem -Path build -Recurse -Filter 'IdentityAlgorithmTemplate.lib' |
+          Get-ChildItem -Path build -Recurse -Filter 'NewOnlineIdentityAlgorithm.dll' |
+            Copy-Item -Destination "$staging\bin\" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path build -Recurse -Filter 'NewOfflineIdentityAlgorithm.lib' |
+            Copy-Item -Destination "$staging\lib\" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path build -Recurse -Filter 'NewOnlineIdentityAlgorithm.lib' |
             Copy-Item -Destination "$staging\lib\" -ErrorAction SilentlyContinue
           foreach ($f in @('README.md','LICENSE')) {
             if (Test-Path $f) { Copy-Item $f -Destination "$staging\" }

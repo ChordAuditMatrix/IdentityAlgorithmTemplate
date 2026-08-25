@@ -84,6 +84,12 @@ CryptoArray NewOnlineIdentityAlgorithm::sign(const SignRequest& /*req*/)
     spdlog::warn("NewOnlineIdentityAlgorithm::sign() stub — not implemented");
     return CryptoArray{};
 }
+CryptoArray NewOnlineIdentityAlgorithm::aggregate(const AggregateRequest& /*req*/)
+{
+    // TODO: Implement online signature aggregation.
+    spdlog::warn("NewOnlineIdentityAlgorithm::aggregate() stub — not implemented");
+    return CryptoArray{};
+}
 
 bool NewOnlineIdentityAlgorithm::aggregateVerify(const AggregateVerifyRequest& /*req*/)
 {
