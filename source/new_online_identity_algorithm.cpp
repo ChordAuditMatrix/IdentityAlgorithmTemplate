@@ -18,8 +18,9 @@
 /**
  * @file new_online_identity_algorithm.cpp
  * @brief Skeleton implementation of an online identity signing algorithm.
- * @details All methods return default-constructed results as stubs.
- *          Users should replace these with actual cryptographic logic.
+ * @details All methods return default-constructed results as stubs. The Online
+ *          tier supplies session-string construction and validation; aggregation
+ *          uses the inherited aggregate(AggregateRequest) operation.
  * @author Dylan Liu
  * @version 1.0.0
  * @date 2026-08-25
@@ -70,7 +71,7 @@ IdentityRequestVariantPtr NewOnlineIdentityAlgorithm::createRequest(
     IdentityOperation op,
     const AuditDataMap& /*input*/)
 {
-    // TODO: Implement AuditDataMap → typed SignRequest or AggregateVerifyRequest
+    // TODO: Implement AuditDataMap → typed SignRequest, AggregateRequest, or AggregateVerifyRequest
     spdlog::warn("NewOnlineIdentityAlgorithm::createRequest() stub — not implemented for op={}",
                  static_cast<int>(op));
     throw std::runtime_error("NewOnlineIdentityAlgorithm::createRequest() not implemented");
@@ -84,10 +85,11 @@ CryptoArray NewOnlineIdentityAlgorithm::sign(const SignRequest& /*req*/)
     spdlog::warn("NewOnlineIdentityAlgorithm::sign() stub — not implemented");
     return CryptoArray{};
 }
+
 CryptoArray NewOnlineIdentityAlgorithm::aggregate(const AggregateRequest& /*req*/)
 {
-    // TODO: Implement online signature aggregation.
-    spdlog::warn("NewOnlineIdentityAlgorithm::aggregate() stub — not implemented");
+    // TODO: Implement online signature aggregation using AggregateRequest::sessionString.
+    spdlog::warn("NewOnlineIdentityAlgorithm::aggregate(AggregateRequest) stub — not implemented");
     return CryptoArray{};
 }
 
@@ -99,6 +101,8 @@ bool NewOnlineIdentityAlgorithm::aggregateVerify(const AggregateVerifyRequest& /
 }
 
 // ── Session contract (online tier) ──
+// Online aggregation uses aggregate(AggregateRequest); its sessionString field
+// carries the coordinator-issued session string.
 
 std::string NewOnlineIdentityAlgorithm::makeSessionString(
     const std::string& /*sessionId*/,
@@ -115,15 +119,6 @@ bool NewOnlineIdentityAlgorithm::validateSessionString(
     // TODO: Implement session string format/domain validation
     spdlog::warn("NewOnlineIdentityAlgorithm::validateSessionString() stub — not implemented");
     return false;
-}
-
-CryptoArray NewOnlineIdentityAlgorithm::aggregateSessionSignatures(
-    const std::vector<CryptoArray>& /*signatures*/,
-    const std::string& /*sessionString*/)
-{
-    // TODO: Implement in-session aggregation (reject cross-session mixing and duplicate signers)
-    spdlog::warn("NewOnlineIdentityAlgorithm::aggregateSessionSignatures() stub — not implemented");
-    return CryptoArray{};
 }
 
 // ── Factory methods for deserialization ──

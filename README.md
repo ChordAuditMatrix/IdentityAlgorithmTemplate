@@ -10,20 +10,20 @@ The template depends on [CoreLib](https://github.com/ChordAuditMatrix/CoreLib), 
 
 ## Architecture
 
-Identity signing algorithms implement a **two-tier key hierarchy** with two core operations,
+Identity signing algorithms implement a **two-tier key hierarchy** with core signing operations,
 and split into **two coordination tiers** — Online and Offline — mirroring the Audit
 hierarchy's `AuditStrategy → StaticAuditStrategy / DynamicAuditStrategy` pattern:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ IdentitySigningAlgorithm (abstract base, CoreLib)                    │
-│  algorithmType() / version() / kind() / key mgmt / sign / verify     │
+│  algorithmType() / version() / kind() / key mgmt / sign / aggregate / verify │
 ├───────────────────────────────────────┬──────────────────────────────┤
 │ OnlineIdentitySigningAlgorithm        │ OfflineIdentitySigningAlgorithm │
 │  kind() = Online (final)              │  kind() = Offline (final)    │
 │  + makeSessionString()                │  (no session methods —       │
 │  + validateSessionString()            │   by design, enforced at     │
-│  + aggregateSessionSignatures()       │   compile time)              │
+│  + aggregate(AggregateRequest)        │   compile time)              │
 ├───────────────────────────────────────┼──────────────────────────────┤
 │ NewOnlineIdentityAlgorithm            │ NewOfflineIdentityAlgorithm  │
 │  algorithmType = "NewOnlineIdentity"  │  algorithmType = "NewOfflineIdentity" │
@@ -32,13 +32,15 @@ hierarchy's `AuditStrategy → StaticAuditStrategy / DynamicAuditStrategy` patte
 ```
 
 `kind()` is finalized by the tier (never reimplemented in a concrete class), so callers can
-statically distinguish session-coordinated from session-free algorithms. The session methods
-exist **only** on the Online tier — an `OfflineIdentitySigningAlgorithm` reference cannot
-invoke them, which keeps the "no coordination" constraint visible at compile time.
+statically distinguish session-coordinated from session-free algorithms. The Online tier owns
+session-string construction and validation; aggregation uses the common
+`aggregate(AggregateRequest)` operation inherited from `IdentitySigningAlgorithm`, with the
+request's `sessionString` carrying the coordinator-issued session. The session methods exist
+**only** on the Online tier — an `OfflineIdentitySigningAlgorithm` reference cannot invoke them,
+which keeps the "no coordination" constraint visible at compile time.
 
 Both tiers share the same key management and operation flow:
 
-```
 ┌────────────────────────────────────────────────────┐
 │  Master Key Generation                              │
 │  generateMasterKey() → (masterPublicKey, masterPrivateKey)  │
@@ -50,6 +52,10 @@ Both tiers share the same key management and operation flow:
 │  Sign                                               │
 │  sign(message, userPrivateKey, masterPublicKey)     │
 │    → signature                                      │
+├────────────────────────────────────────────────────┤
+│  Aggregate                                          │
+│  aggregate(AggregateRequest)                        │
+│    → aggregateSignature                             │
 ├────────────────────────────────────────────────────┤
 │  Aggregate Verify                                   │
 │  aggregateVerify(aggSignature, message, signers, mpk)│
@@ -163,8 +169,8 @@ Pick the tier that matches your scheme's coordination model, then inherit from i
 | Requires a coordinator-published session string; signatures bound to it | `CAMatrix::Identity::Core::OnlineIdentitySigningAlgorithm` | `Online` (final) |
 
 `kind()` is finalized by the tier — do **not** override it. The Online tier additionally
-requires the three session-contract methods (`makeSessionString` / `validateSessionString` /
-`aggregateSessionSignatures`).
+requires `makeSessionString()` and `validateSessionString()`, and uses the inherited
+`aggregate(AggregateRequest)` operation with `AggregateRequest::sessionString`.
 
 ### Required Methods
 
@@ -176,6 +182,7 @@ requires the three session-contract methods (`makeSessionString` / `validateSess
 | `generateMasterKey()` | Generate master key pair (mpk, msk) | `pair<AlgoPublicParamsPtr, AlgoPrivateParamsPtr>` |
 | `deriveUserKey(mpk, msk, userId)` | Derive user key pair from master key | `pair<AlgoUserPublicParamsPtr, AlgoUserPrivateParamsPtr>` |
 | `sign(req)` | Sign a message with user's private key | `CryptoArray` |
+| `aggregate(const AggregateRequest& req)` | Aggregate individual signatures into one aggregate signature; Online requests carry `sessionString` | `CryptoArray` |
 | `aggregateVerify(req)` | Verify an aggregate signature | `bool` |
 | `createRequest(op, input)` | Convert `AuditDataMap` → typed Request | `IdentityRequestVariantPtr` |
 | `createPublicParams()` | Factory for deserializing master public params | `shared_ptr<AlgoPublicParams>` |
@@ -183,13 +190,16 @@ requires the three session-contract methods (`makeSessionString` / `validateSess
 | `createUserPublicParams()` | Factory for deserializing user public params | `shared_ptr<AlgoUserPublicParams>` |
 | `createUserPrivateParams()` | Factory for deserializing user private params | `shared_ptr<AlgoUserPrivateParams>` |
 
-**Online tier only** — session contract:
+**Online tier** — session contract:
 
 | Method | Description | Returns |
 |--------|-------------|---------|
 | `makeSessionString(sessionId, context)` | Construct the coordinator-issued session string (`sessionId ‖ context`); MUST be unique across sessions | `std::string` |
 | `validateSessionString(sessionString)` | Validate a session string's format and domain | `bool` |
-| `aggregateSessionSignatures(signatures, sessionString)` | Aggregate in-session signatures; MUST reject cross-session mixing and duplicate signers | `CryptoArray` |
+
+The common inherited `aggregate(AggregateRequest)` operation performs aggregation for both
+tiers. For Online requests, `AggregateRequest::sessionString` carries the coordinator-issued
+session string used to bind the signatures to one session.
 
 ### C-Linkage Factory Functions
 
@@ -219,11 +229,12 @@ Identity algorithms use a **two-tier key hierarchy**:
 
 ### Request / Result Types
 
-There are two operations and two corresponding request types:
+There are three operations and three corresponding request types:
 
 | Operation | Request | Description |
 |-----------|---------|-------------|
 | `IdentityOperation::Sign` | `SignRequest` | Contains: message, userId, userPrivateKey, masterPublicKey |
+| `IdentityOperation::Aggregate` | `AggregateRequest` | Contains: message, sessionString, individual signatures, signer list, masterPublicKey |
 | `IdentityOperation::Verify` | `AggregateVerifyRequest` | Contains: aggregateSignature, message, signers list, masterPublicKey |
 
 The `createRequest()` method converts an `AuditDataMap` (key-value map) into a typed request struct based on the `IdentityOperation` enum.
